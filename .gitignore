@@ -209,3 +209,5 @@ __marimo__/
 
 *.json
 *.zip
+myenv/
+test.py

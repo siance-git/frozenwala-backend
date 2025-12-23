@@ -28,9 +28,15 @@ class Item(models.Model):
         return f"Item ID: {self.id}, Category: {self.category.name}"
     
 class ItemImage(models.Model):
+    MEDIA_TYPE_CHOICES = [
+        ('image', 'Image'),
+        ('video', 'Video'),
+    ]
+    
     id = models.AutoField(primary_key=True)
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='images')
-    image_path = models.CharField(max_length=255)
+    media_file = models.FileField(upload_to='item_media/', null=True, blank=True)
+    media_type = models.CharField(max_length=10, choices=MEDIA_TYPE_CHOICES, default='image')
     is_primary = models.BooleanField(default=False)
     sort_order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -39,7 +45,7 @@ class ItemImage(models.Model):
         db_table = 'db_item_images'   # Matches your MySQL table name
 
     def __str__(self):
-        return f"Image {self.id} for Item {self.item.id}"
+        return f"{self.media_type.capitalize()} {self.id} for Item {self.item.id}"
     
 class ItemReview(models.Model):
     user = models.ForeignKey("ecomApp.CustomUser", on_delete=models.CASCADE)

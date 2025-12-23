@@ -397,7 +397,7 @@ class ProductDetailsAPIView(APIView):
             images = ItemImage.objects.filter(item=item).order_by("sort_order")
 
             item_data["image_gallery"] = [
-                {"image_path": asset_url + img.image_path.lstrip("/")}
+                {"media_path": asset_url + img.media_file.name, "media_type": img.media_type}
                 for img in images
             ]
 
