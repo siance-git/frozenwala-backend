@@ -1,8 +1,8 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Cart
-from .serializers import CartSerializer,CartGetSerializer
+from .models import Cart, Whishlist
+from .serializers import CartSerializer,CartGetSerializer, WishlistSerializer
 from ecomApp.models import CustomUser
 from menu_management.models import Item
 from rest_framework.permissions import IsAuthenticated
@@ -778,3 +778,38 @@ class UniqueProductCount(APIView):
             return Response({'error': 'User does not have any products in the cart.'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class WishlistAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            if not request.user.is_authenticated:
+                return Response({"error": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+
+            wishlist_items = Whishlist.objects.filter(user=request.user)
+            serializer = WishlistSerializer(wishlist_items, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def post(self, request):
+        try:
+            if not request.user.is_authenticated:
+                return Response({"error": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+
+            item_id = request.data.get('item_id')
+            item = Item.objects.filter(id=item_id).first()
+            if not item:
+                return Response({"error": "Item does not exist."}, status=status.HTTP_404_NOT_FOUND)
+            
+            wishlist_item = Whishlist.objects.filter(user=request.user, item=item).first()
+            if wishlist_item:
+                wishlist_item.delete()
+                return Response({"message": "Item removed from wishlist."}, status=status.HTTP_200_OK)
+            else:
+                Whishlist.objects.create(user=request.user, item=item)
+            serializer = WishlistSerializer(wishlist_item)
+            return Response({"message": "Item added to wishlist.", "data": serializer.data}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

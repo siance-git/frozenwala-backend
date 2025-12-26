@@ -1,6 +1,7 @@
 from rest_framework import serializers
-from .models import Cart
+from .models import Cart, Whishlist
 from django.conf import settings
+from menu_management.serializers import ItemSerializer
 
 class CartSerializer(serializers.ModelSerializer):
     class Meta:
@@ -73,4 +74,14 @@ class CartGetSerializer(serializers.ModelSerializer):
 
         representation['product_image'] = full_url
         representation['item_old_price'] = "{:.2f}".format(instance.product_id.item_old_price)
+        return representation
+
+class WishlistSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Whishlist
+        fields = '__all__'
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['item'] = ItemSerializer(instance.item).data
         return representation

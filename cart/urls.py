@@ -24,5 +24,7 @@ urlpatterns = [
 
     path('api/send_coupon/', send_coupon, name='send_coupon'),
     path('api/unique-product-count/', UniqueProductCount.as_view(), name='unique_product_count'),
+    
+    path('api/wishlist/', WishlistAPIView.as_view(), name='wishlist')
 
 ]
