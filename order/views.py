@@ -7,8 +7,8 @@ from datetime import datetime
 from django.shortcuts import get_object_or_404, render
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status, viewsets
-from .models import  Order
+from rest_framework import status, viewsets, generics
+from .models import  Order, PaymentOption
 from .serializers import OrderSerializer
 from rest_framework import status
 from rest_framework.response import Response
@@ -91,7 +91,7 @@ from .serializers import GroupedOrderSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .models import Order
-from .serializers import OrderSerializer
+from .serializers import OrderSerializer, PaymentOptionSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .models import Order
@@ -367,6 +367,16 @@ def create_order(request):
         zip_code = request.data.get('zip_code', "")
         delivery_time = request.data.get('delivery_time', ""),
         influencer_code = request.data.get('influencer_code', "")
+        payment_option = request.data.get('payment_option', "")
+
+        if not payment_option:
+            return JsonResponse({'message': 'Please select a payment option','status':'400'}, status=400)
+        
+        payment_option = PaymentOption.objects.filter(id=payment_option).first()
+        
+        if not payment_option:
+            return JsonResponse({'message': 'Invalid payment option selected','status':'400'}, status=400)
+
         user = get_object_or_404(CustomUser, id=user_id)
         if not influencer_code:
             influencer_code = user.influencer_code if hasattr(user, 'influencer_code') else ""
@@ -437,9 +447,11 @@ def create_order(request):
                     country=country,
                     zip_code=zip_code,
                     delivery_time=delivery_time,
+                    payment_option=payment_option,
 
                 )
 
+            cart_items.delete()
             return JsonResponse({'razorpay_order_id': razorpay_order_id, 'couponcode': coupon_code, 'total_price': total_amount,'status':'success'}, status=200)
         except ObjectDoesNotExist:
             return JsonResponse({'error': 'User does not exist'}, status=404)
@@ -550,7 +562,7 @@ class OrderListAPIView(APIView):
         user_id = request.query_params.get('user_id')
 
         # Fetch all orders for the given user where payment_id is not null
-        orders = Order.objects.filter(user_id=user_id, payment_id__isnull=False)
+        orders = Order.objects.filter(user_id=user_id)
 
         # Group orders by order_id, keeping the latest order with the highest created_at timestamp
         unique_orders = orders.values('order_id').annotate(
@@ -564,17 +576,17 @@ class OrderListAPIView(APIView):
         order_list = []
         local_tz = pytz.timezone('Asia/Kolkata')
         for order in unique_orders:
-            if order['payment_id']:
-                # Check if payment_id is not empty or null
-                # Convert UTC to local timezone
-                local_created_at = order['latest_created_at'].astimezone(local_tz)
-                order_dict = {
-                    'order_id': order['order_id'],
-                    'created_at': local_created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                    'total_price': order['total_price'],
-                    'status': order['status']
-                }
-                order_list.append(order_dict)
+            # if order['payment_id']:
+            # Check if payment_id is not empty or null
+            # Convert UTC to local timezone
+            local_created_at = order['latest_created_at'].astimezone(local_tz)
+            order_dict = {
+                'order_id': order['order_id'],
+                'created_at': local_created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                'total_price': order['total_price'],
+                'status': order['status']
+            }
+            order_list.append(order_dict)
 
         # Sort the order list in descending order based on created_at
         sorted_order_list = sorted(order_list, key=lambda x: x['created_at'], reverse=True)
@@ -701,9 +713,9 @@ def generate_invoice(request):
     elements.append(Spacer(1, 12))
 
     # Add logo
-    logo_path = Path('ecomApp/static/assets/images/Frozenwala logo.png')  # Replace with the correct path
+    logo_path = Path('ecomApp/static/assets/images/FrozenWala-Logo.jpeg')  # Replace with the correct path
     if logo_path.exists():
-        logo = Image(str(logo_path), width=150, height=150)  # Adjust width and height as needed
+        logo = Image(str(logo_path), width=150, height=75)  # Adjust width and height as needed
         elements.append(logo)
     else:
         elements.append(Paragraph('Logo not found', styles['CustomNormal']))
@@ -802,3 +814,7 @@ def generate_invoice(request):
     # Build PDF
     doc.build(elements)
     return response
+
+class PaymentOptionListCreateView(generics.ListCreateAPIView):
+    queryset = PaymentOption.objects.filter(is_active=True)
+    serializer_class = PaymentOptionSerializer

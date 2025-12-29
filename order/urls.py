@@ -23,6 +23,8 @@ urlpatterns = [
     path('api/invoice/', OrderDetailsAPIView.as_view(), name='grouped-order-list'),
 
     path('api/generate_invoice/', generate_invoice, name='generate_invoice'),
+    
+    path('api/payment-options/', PaymentOptionListCreateView.as_view()),
 
     # path('api/create_order/', create_order, name='create_order')
     # ... other URLs
