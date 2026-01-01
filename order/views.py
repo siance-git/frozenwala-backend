@@ -71,7 +71,7 @@ from reportlab.lib import colors
 from django.http import HttpResponse
 # from django.utils.timezone import localtime
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
 from pathlib import Path
@@ -100,7 +100,6 @@ from django.db.models import Max, Q
 from datetime import date
 from rest_framework import serializers
 from .models import CustomUser
-
 # from django.db.models import Q, Max
 # from django.shortcuts import render, redirect, get_object_or_404
 # from django.http import JsonResponse, HttpResponse, HttpResponseServerError
@@ -147,6 +146,11 @@ from .models import CustomUser
 india_tz = pytz.timezone("Asia/Kolkata")
 current_time = datetime.now(india_tz)
 
+from django.utils import timezone
+tz = timezone.get_current_timezone()
+
+from pytz import timezone
+
 #for noww...
 class OrderView(APIView):
     def post(self, request):
@@ -162,6 +166,21 @@ def orderlist(request):
         return redirect('backend/login')
     # Fetch all orders
     orders = Order.objects.all().order_by('-created_at')
+
+    status = request.GET.get('status')
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+
+    if status:
+        orders = orders.filter(status=status)
+
+    if from_date:
+        from_dt = tz.localize(datetime.strptime(from_date, "%Y-%m-%d"))
+        orders = orders.filter(created_at__gte=from_dt)
+
+    if to_date:
+        to_dt = tz.localize(datetime.strptime(to_date, "%Y-%m-%d")) + timedelta(days=1)
+        orders = orders.filter(created_at__lte=to_dt)
 
     # Create a dictionary to store orders grouped by their order_id
     orders_dict = {}
@@ -181,7 +200,10 @@ def orderlist(request):
     # Pass the first elements to the template context
     context = {
         'ordform': first_elements,
-        'new': sec_elements
+        'new': sec_elements,
+        'selected_status': status,
+        'from_date': from_date,
+        'to_date': to_date,
     }
 
     return render(request, 'backend/orderlist.html', context)
