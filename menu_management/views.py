@@ -10,16 +10,57 @@ from django.conf import settings
 from .serializers import ItemReviewSerializer
 from rest_framework.permissions import AllowAny
 from django.core.paginator import Paginator
+from django.views.decorators.http import require_http_methods
 
 
 @login_required(login_url='backend/login')
+@require_http_methods(["GET", "POST"])
 def item_list(request):
     if not request.user.is_staff:
         return redirect('backend/login')
+
+    if request.method == "POST":
+        item_ids = request.POST.getlist('item_ids')
+        action = request.POST.get('action')
+        
+        if not item_ids:
+            return redirect('item_list')
+
+        if action == "deactivate":
+            Item.objects.filter(id__in=item_ids).update(status=False)
+
+        elif action == "activate":
+            Item.objects.filter(id__in=item_ids).update(status=True)
+
+        return redirect('item_list')
+
+    category_id = request.GET.get('category')
+    brand_name = request.GET.get('brand')
+
     items = Item.objects.all() .order_by('-created_at')
+
+    if category_id:
+        items = items.filter(category_id=category_id)
+
+    if brand_name:
+        items = items.filter(brand_name=brand_name)
+
+    categories = Catagory.objects.all()
+
+    brands = (
+        Item.objects
+        .exclude(brand_name__isnull=True)
+        .exclude(brand_name__exact='')
+        .values_list('brand_name', flat=True)
+        .distinct()
+    )
 
     context = {
         'items': items,
+        'categories': categories,
+        'brands': brands,
+        'selected_category': category_id,
+        'selected_brand': brand_name,
         'ASSET_URL': settings.ASSET_URL
     }
     return render(request, 'backend/item_list.html', context)
