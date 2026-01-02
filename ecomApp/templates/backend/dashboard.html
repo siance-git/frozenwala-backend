@@ -275,7 +275,7 @@
                 {% endif %}    </div>
     <div class="product-info">
       <p href="{% url 'view_item' item.id %}" style=""class="product-title" >{{ item.title }}
-        <span class="badge badge-warning float-right">${{ item.item_new_price }}</span>
+        <span class="badge badge-warning float-right">₹{{ item.item_new_price }}</span>
       </p>
       <span class="product-description">{{ item.description }}</span>
     </div>

@@ -150,6 +150,8 @@ from django.utils import timezone
 tz = timezone.get_current_timezone()
 
 from pytz import timezone
+from reportlab.platypus import *
+from django.http import HttpResponse, JsonResponse
 
 #for noww...
 class OrderView(APIView):
@@ -430,16 +432,22 @@ def create_order(request):
             except:
                 walet_value = 0
 
-            if walet_value:
-                user = CustomUser.objects.get(id=user_id)
-                user_walet = int(user.walet)
-                if walet_value > user_walet:
-                    walet_value = 0
+            # if walet_value:
+            #     user = CustomUser.objects.get(id=user_id)
+            #     user_walet = int(user.walet)
+            #     if walet_value > user_walet:
+            #         walet_value = 0
 
             if not newname:
                 newname = user.name
             if not phone:
                 phone = user.phone_number
+            
+            gstn = AddressAdmin.objects.first().gstn if AddressAdmin.objects.first() else ""
+            gst_rate = AddressAdmin.objects.first().gst_rate if AddressAdmin.objects.first() else 0
+            cgst_amount = round((float(total_amount) * gst_rate) / (100 + gst_rate) / 2, 2) if gst_rate else 0
+            sgst_amount = round((float(total_amount) * gst_rate) / (100 + gst_rate) / 2, 2) if gst_rate else 0
+            total_gst = round((float(total_amount) * gst_rate) / (100 + gst_rate), 2) if gst_rate else 0
 
             # Create orders for each item in the cart
             for cart_item in cart_items:
@@ -470,10 +478,21 @@ def create_order(request):
                     zip_code=zip_code,
                     delivery_time=delivery_time,
                     payment_option=payment_option,
-
+                    gstn=gstn,
+                    gst_rate=gst_rate,
+                    cgst_amount=cgst_amount,
+                    sgst_amount=sgst_amount,
+                    total_gst=total_gst
                 )
 
             cart_items.delete()
+            
+            if walet_value:
+                user = CustomUser.objects.get(id=user_id)
+                if user and user.walet >= walet_value:
+                    user.walet = int(user.walet) - walet_value
+                    user.save()
+
             return JsonResponse({'razorpay_order_id': razorpay_order_id, 'couponcode': coupon_code, 'total_price': total_amount,'status':'success'}, status=200)
         except ObjectDoesNotExist:
             return JsonResponse({'error': 'User does not exist'}, status=404)
@@ -691,6 +710,11 @@ class OrderDetailsAPIView(APIView):
                         "zip_code": order.zip_code,
                         "delivery_time": order.delivery_time,
                         "wallet": order.walet_value,
+                        "cgst_amount": order.cgst_amount,
+                        "sgst_amount": order.sgst_amount,
+                        "total_gst": order.total_gst,
+                        "gstn": order.gstn,
+                        "gst_rate": order.gst_rate,
 
                         # "order_item_id": order.order_item_id
                     }
@@ -703,137 +727,306 @@ class OrderDetailsAPIView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+# def generate_invoice(request):
+#     order_id = request.GET.get('order_id')
+#     if not order_id:
+#         return JsonResponse({'error': 'Order ID is required'}, status=400)
+
+#     # Retrieve one order's items with the given order_id
+#     order_items = Order.objects.filter(order_id=order_id)
+#     local_tz = timezone('Asia/Kolkata')
+
+#     if not order_items:
+#         return JsonResponse({'error': 'No items found for the specified order ID'}, status=404)
+
+#     # Create PDF document
+#     response = HttpResponse(content_type='application/pdf')
+#     response['Content-Disposition'] = f'attachment; filename=invoice_{order_id}.pdf'
+
+#     # Create a ReportLab PDF document
+#     doc = SimpleDocTemplate(response, pagesize=letter, topMargin=20)  # Adjust topMargin as needed
+#     styles = getSampleStyleSheet()
+
+#     # Customize styles
+#     styles.add(ParagraphStyle(name='CustomTitle', parent=styles['Title'], fontSize=18))
+#     styles.add(ParagraphStyle(name='CustomNormal', parent=styles['Normal'], fontSize=12, leading=16))
+#     styles.add(ParagraphStyle(name='CustomHeading2', parent=styles['Heading2'], fontSize=14, leading=18))
+
+#     elements = []
+#     order = order_items.first()  # Assuming all items belong to the same order
+#     order.created_at = order.created_at.astimezone(local_tz)  # Convert to local timezone
+#     created_at_formatted = order.created_at.strftime('%d %B %Y, %I:%M %p')  # Format as "day Month Year, hh:mm AM/PM"
+#     elements.append(Spacer(1, 12))
+
+#     # Add logo
+#     logo_path = Path('ecomApp/static/assets/images/FrozenWala-Logo.jpeg')  # Replace with the correct path
+#     if logo_path.exists():
+#         logo = Image(str(logo_path), width=150, height=75)  # Adjust width and height as needed
+#         elements.append(logo)
+#     else:
+#         elements.append(Paragraph('Logo not found', styles['CustomNormal']))
+
+#     elements.append(Spacer(1, 12))  # Spacer after the logo
+
+#     # Add title for the invoice
+#     address = AddressAdmin.objects.first()
+#     if address:
+#         elements.append(Paragraph(address.newname, styles['CustomTitle']))
+#         elements.append(Paragraph(address.address, styles['CustomNormal']))
+#         elements.append(Paragraph(f'Order Placed On: {created_at_formatted}', styles['CustomNormal']))
+#         elements.append(Paragraph(f'Phone Number - {address.phone}', styles['CustomNormal']))
+#         elements.append(Paragraph(f'GSTN - {address.gstn}', styles['CustomNormal']))
+#     else:
+#         elements.append(Paragraph('FROZENWALA ', styles['CustomTitle']))
+#         elements.append(Paragraph('ruby tower jogeshwari west, mumbai, Maharashtra - 400102', styles['CustomNormal']))
+#         elements.append(Paragraph(f'Order Placed On: {created_at_formatted}', styles['CustomNormal']))
+#         elements.append(Paragraph('Phone Number - 8268888826', styles['CustomNormal']))
+#         elements.append(Paragraph('GSTN - 27AKFPB3371A1ZS', styles['CustomNormal']))
+
+#     # Spacer before logo (adjust as needed)
+
+#     # Horizontal line
+#     elements.append(HRFlowable(width="100%", thickness=1, color='black'))
+#     elements.append(Spacer(1, 12))
+
+#     # Order and customer details
+#     elements.append(Paragraph(f'Customer Name - {order.newname}', styles['CustomNormal']))
+#     elements.append(Paragraph(f'Customer Number - {order.phone}', styles['CustomNormal']))
+#     elements.append(
+#         Paragraph(f'Address - {order.address}, {order.city}, {order.state}, {order.country}, {order.zip_code}',
+#                   styles['CustomNormal']))
+#     elements.append(Paragraph(f'Order Number - {order.id}', styles['CustomNormal']))
+#     elements.append(Spacer(1, 12))
+
+#     # Horizontal line
+#     elements.append(HRFlowable(width="100%", thickness=1, color='black'))
+#     elements.append(Spacer(1, 12))
+
+#     # Table headers
+#     data = [['Items', 'Qty.', 'Total(₹)']]
+#     elements.append(Spacer(1, 12))
+
+#     # Table data
+#     for item in order_items:
+#         item_title = item.product_id.title if item.product_id and item.product_id.title else 'N/A'
+#         item_quantity = item.quantity if item.quantity else 0
+#         item_total_price = float(item.product_id.item_new_price) if item.product_id.item_new_price else 0.0
+#         data.append([item_title, item_quantity, f'{item_total_price:.2f}'])
+
+#     # Create table
+#     table = Table(data, colWidths=[300, 50, 100])
+#     table.setStyle(TableStyle([
+#         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+#         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+#         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+#         ('GRID', (0, 0), (-1, -1), 1, 'black')
+#     ]))
+#     elements.append(table)
+#     elements.append(Spacer(1, 12))
+
+#     # Horizontal line
+#     elements.append(HRFlowable(width="100%", thickness=1, color='black'))
+#     elements.append(Spacer(1, 12))
+
+#     # Order totals
+#     item_total = float(order.previous_price) if order.previous_price else 0.0
+#     delivery_price = float(order.delivery_price) if order.delivery_price else 0.0
+#     total_price = float(order.total_price) if order.total_price else 0.0
+
+#     elements.append(Paragraph(f'Item Total: {item_total:.2f}', styles['CustomNormal']))
+#     elements.append(Paragraph(f'Delivery Charge: {delivery_price:.2f}', styles['CustomNormal']))
+
+#     if order.couponcode:
+#         elements.append(Paragraph(f'Coupon Discount: {order.couponcode}', styles['CustomNormal']))
+#     else:
+#         elements.append(Paragraph('Applied Coupon: NA', styles['CustomNormal']))
+
+#     if order.walet_value:
+#         elements.append(Paragraph(f'Wallet Used: {order.walet_value}', styles['CustomNormal']))
+#     else:
+#         elements.append(Paragraph('Wallet Used: NA', styles['CustomNormal']))
+
+#     elements.append(Spacer(1, 12))
+#     elements.append(Paragraph(f'Total Amount: {total_price:.2f}', styles['CustomHeading2']))
+
+#     # Horizontal line
+#     elements.append(HRFlowable(width="100%", thickness=1, color='black'))
+#     elements.append(Spacer(1, 12))
+
+#     # Center align elements
+#     for element in elements:
+#         element.alignment = 1  # 1 means center alignment
+
+#     # Build PDF
+#     doc.build(elements)
+#     return response
+
 def generate_invoice(request):
     order_id = request.GET.get('order_id')
+
     if not order_id:
-        return JsonResponse({'error': 'Order ID is required'}, status=400)
+        return JsonResponse({"error": "Order ID is required"}, status=400)
 
-    # Retrieve one order's items with the given order_id
     order_items = Order.objects.filter(order_id=order_id)
-    local_tz = timezone('Asia/Kolkata')
 
-    if not order_items:
-        return JsonResponse({'error': 'No items found for the specified order ID'}, status=404)
+    if not order_items.exists():
+        return JsonResponse({"error": "Order not found"}, status=404)
 
-    # Create PDF document
-    response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename=invoice_{order_id}.pdf'
+    order = order_items.first()
+    
+    wallet_used = float(order.walet_value or 0)
+    coupon_code = order.couponcode or None
 
-    # Create a ReportLab PDF document
-    doc = SimpleDocTemplate(response, pagesize=letter, topMargin=20)  # Adjust topMargin as needed
+    local_tz = timezone("Asia/Kolkata")
+    order_date = order.created_at.astimezone(local_tz).strftime("%d %B %Y, %I:%M %p")
+
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = f"attachment; filename=invoice_{order_id}.pdf"
+
+    doc = SimpleDocTemplate(response, pagesize=letter, topMargin=25, bottomMargin=25)
     styles = getSampleStyleSheet()
 
-    # Customize styles
-    styles.add(ParagraphStyle(name='CustomTitle', parent=styles['Title'], fontSize=18))
-    styles.add(ParagraphStyle(name='CustomNormal', parent=styles['Normal'], fontSize=12, leading=16))
-    styles.add(ParagraphStyle(name='CustomHeading2', parent=styles['Heading2'], fontSize=14, leading=18))
+    title = ParagraphStyle(
+        "InvoiceTitle",
+        parent=styles["Heading1"],
+        alignment=1,
+        fontSize=18,
+        spaceAfter=10
+    )
+
+    label = ParagraphStyle(
+        "Label",
+        parent=styles["Normal"],
+        fontSize=11,
+        textColor=colors.grey
+    )
+
+    normal = ParagraphStyle(
+        "NormalText",
+        parent=styles["Normal"],
+        fontSize=12
+    )
 
     elements = []
-    order = order_items.first()  # Assuming all items belong to the same order
-    order.created_at = order.created_at.astimezone(local_tz)  # Convert to local timezone
-    created_at_formatted = order.created_at.strftime('%d %B %Y, %I:%M %p')  # Format as "day Month Year, hh:mm AM/PM"
-    elements.append(Spacer(1, 12))
 
-    # Add logo
-    logo_path = Path('ecomApp/static/assets/images/FrozenWala-Logo.jpeg')  # Replace with the correct path
+    # ---------------- HEADER + LOGO ----------------
+    logo_path = Path("ecomApp/static/assets/images/FrozenWala-Logo.jpeg")
     if logo_path.exists():
-        logo = Image(str(logo_path), width=150, height=75)  # Adjust width and height as needed
-        elements.append(logo)
-    else:
-        elements.append(Paragraph('Logo not found', styles['CustomNormal']))
+        elements.append(Image(str(logo_path), width=150, height=75))
 
-    elements.append(Spacer(1, 12))  # Spacer after the logo
+    elements.append(Spacer(1, 6))
+    elements.append(Paragraph("TAX INVOICE", title))
+    elements.append(Spacer(1, 10))
 
-    # Add title for the invoice
+    # ---------- SELLER DETAILS ----------
     address = AddressAdmin.objects.first()
-    if address:
-        elements.append(Paragraph(address.newname, styles['CustomTitle']))
-        elements.append(Paragraph(address.address, styles['CustomNormal']))
-        elements.append(Paragraph(f'Order Placed On: {created_at_formatted}', styles['CustomNormal']))
-        elements.append(Paragraph(f'Phone Number - {address.phone}', styles['CustomNormal']))
-        elements.append(Paragraph(f'GSTN - {address.gstn}', styles['CustomNormal']))
-    else:
-        elements.append(Paragraph('FROZENWALA ', styles['CustomTitle']))
-        elements.append(Paragraph('ruby tower jogeshwari west, mumbai, Maharashtra - 400102', styles['CustomNormal']))
-        elements.append(Paragraph(f'Order Placed On: {created_at_formatted}', styles['CustomNormal']))
-        elements.append(Paragraph('Phone Number - 8268888826', styles['CustomNormal']))
-        elements.append(Paragraph('GSTN - 27AKFPB3371A1ZS', styles['CustomNormal']))
 
-    # Spacer before logo (adjust as needed)
+    seller_name = address.newname if address else "Frozenwala"
+    seller_addr = address.address if address else "Ruby Tower, Jogeshwari West, Mumbai"
+    seller_gst = address.gstn if address and address.gstn else "N/A"
 
-    # Horizontal line
-    elements.append(HRFlowable(width="100%", thickness=1, color='black'))
-    elements.append(Spacer(1, 12))
+    seller_section = [
+        [Paragraph("<b>Seller Details</b>", normal)],
+        [Paragraph(seller_name, normal)],
+        [Paragraph(seller_addr, normal)],
+        [Paragraph(f"GSTIN: {seller_gst}", normal)],
+        [Paragraph(f"Order Date: {order_date}", normal)],
+    ]
 
-    # Order and customer details
-    elements.append(Paragraph(f'Customer Name - {order.newname}', styles['CustomNormal']))
-    elements.append(Paragraph(f'Customer Number - {order.phone}', styles['CustomNormal']))
-    elements.append(
-        Paragraph(f'Address - {order.address}, {order.city}, {order.state}, {order.country}, {order.zip_code}',
-                  styles['CustomNormal']))
-    elements.append(Paragraph(f'Order Number - {order.id}', styles['CustomNormal']))
-    elements.append(Spacer(1, 12))
+    elements.append(Table(seller_section, hAlign="LEFT"))
+    elements.append(Spacer(1, 10))
 
-    # Horizontal line
-    elements.append(HRFlowable(width="100%", thickness=1, color='black'))
-    elements.append(Spacer(1, 12))
+    # ---------- CUSTOMER DETAILS ----------
+    customer_section = [
+        [Paragraph("<b>Bill To</b>", normal)],
+        [Paragraph(order.newname or "Customer", normal)],
+        [Paragraph(order.address or "", normal)],
+        [Paragraph(f"{order.city}, {order.state}, {order.country}", normal)],
+        [Paragraph(f"Phone: {order.phone}", normal)],
+        [Paragraph(f"Order No: {order.id}", normal)],
+    ]
 
-    # Table headers
-    data = [['Items', 'Qty.', 'Total(₹)']]
-    elements.append(Spacer(1, 12))
+    elements.append(Table(customer_section, hAlign="LEFT"))
+    elements.append(Spacer(1, 10))
 
-    # Table data
+    elements.append(HRFlowable(width="100%", color=colors.grey))
+    elements.append(Spacer(1, 10))
+
+    # ---------- ITEMS TABLE ----------
+    data = [["Item", "Qty", "Rate (₹)", "Total (₹)"]]
+
     for item in order_items:
-        item_title = item.product_id.title if item.product_id and item.product_id.title else 'N/A'
-        item_quantity = item.quantity if item.quantity else 0
-        item_total_price = float(item.product_id.item_new_price) if item.product_id.item_new_price else 0.0
-        data.append([item_title, item_quantity, f'{item_total_price:.2f}'])
+        title = item.product_id.title if item.product_id else "N/A"
+        qty = item.quantity or 0
+        rate = float(item.product_id.item_new_price or 0)
+        total = rate * qty
 
-    # Create table
-    table = Table(data, colWidths=[300, 50, 100])
+        data.append([title, qty, f"{rate:.2f}", f"{total:.2f}"])
+
+    table = Table(data, colWidths=[250, 70, 100, 100])
     table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('GRID', (0, 0), (-1, -1), 1, 'black')
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+        ("GRID", (0, 0), (-1, -1), 0.6, colors.black),
+        ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
     ]))
+
     elements.append(table)
     elements.append(Spacer(1, 12))
 
-    # Horizontal line
-    elements.append(HRFlowable(width="100%", thickness=1, color='black'))
+    elements.append(HRFlowable(width="100%", color=colors.grey))
+    elements.append(Spacer(1, 8))
+
+    # ---------- SUMMARY ----------
+    item_total = float(order.previous_price or 0)
+    delivery = float(order.delivery_price or 0)
+    grand_total = float(order.total_price or 0)
+
+    gst_rate = order.gst_rate or 0
+    cgst = order.cgst_amount or 0
+    sgst = order.sgst_amount or 0
+    total_gst = order.total_gst or 0
+
+    summary = [
+        ["Item Total", f"₹ {item_total:.2f}"],
+        ["Delivery", f"₹ {delivery:.2f}"],
+    ]
+
+    if coupon_code:
+        summary.append(["Applied Coupon", f"{coupon_code}"])
+
+    if wallet_used:
+        summary.append(["Wallet Used", f"- ₹ {wallet_used:.2f}"])
+
+    if total_gst:
+        summary += [
+            [f"CGST ({gst_rate/2}%)", f"₹ {cgst:.2f}"],
+            [f"SGST ({gst_rate/2}%)", f"₹ {sgst:.2f}"],
+        ]
+
+    summary.append(["", ""])
+    summary.append(["Grand Total", f"₹ {grand_total:.2f}"])
+
+    summary_table = Table(summary, colWidths=[300, 120], hAlign="RIGHT")
+
+    summary_table.setStyle(TableStyle([
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+    ]))
+
+    elements.append(summary_table)
+
     elements.append(Spacer(1, 12))
+    elements.append(HRFlowable(width="100%", color=colors.grey))
+    elements.append(Spacer(1, 6))
 
-    # Order totals
-    item_total = float(order.previous_price) if order.previous_price else 0.0
-    delivery_price = float(order.delivery_price) if order.delivery_price else 0.0
-    total_price = float(order.total_price) if order.total_price else 0.0
+    elements.append(
+        Paragraph(
+            "This is a system generated invoice. Prices are inclusive of applicable taxes.",
+            label
+        )
+    )
 
-    elements.append(Paragraph(f'Item Total: {item_total:.2f}', styles['CustomNormal']))
-    elements.append(Paragraph(f'Delivery Charge: {delivery_price:.2f}', styles['CustomNormal']))
-
-    if order.couponcode:
-        elements.append(Paragraph(f'Coupon Discount: {order.couponcode}', styles['CustomNormal']))
-    else:
-        elements.append(Paragraph('Applied Coupon: NA', styles['CustomNormal']))
-
-    if order.walet_value:
-        elements.append(Paragraph(f'Wallet Used: {order.walet_value}', styles['CustomNormal']))
-    else:
-        elements.append(Paragraph('Wallet Used: NA', styles['CustomNormal']))
-
-    elements.append(Spacer(1, 12))
-    elements.append(Paragraph(f'Total Amount: {total_price:.2f}', styles['CustomHeading2']))
-
-    # Horizontal line
-    elements.append(HRFlowable(width="100%", thickness=1, color='black'))
-    elements.append(Spacer(1, 12))
-
-    # Center align elements
-    for element in elements:
-        element.alignment = 1  # 1 means center alignment
-
-    # Build PDF
     doc.build(elements)
     return response
 

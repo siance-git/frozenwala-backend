@@ -31,6 +31,7 @@ class AddressAdmin(models.Model):
     zip_code = models.CharField(max_length=20)
     status = models.CharField(max_length=50)
     gstn = models.CharField(max_length=50, null=True, blank=True)
+    gst_rate = models.FloatField(default=18)
     created_date = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

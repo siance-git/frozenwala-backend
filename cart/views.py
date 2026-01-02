@@ -10,6 +10,7 @@ from walet.models import Walet
 
 from django.utils.timezone import now
 from ecomApp.models import CustomerCoupon
+from registration.models import AddressAdmin
 
 class AddToCartAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -431,6 +432,8 @@ class CartTotalPrice(APIView):
             coupon_value_param = request.query_params.get('coupon_code')
             used_wallet = request.query_params.get('used_wallet')
             
+            gst_rate = AddressAdmin.objects.first().gst_rate if AddressAdmin.objects.first() else 0
+
             if pick_up == '1':
                 delivery_charge = 0
             else:
@@ -483,11 +486,22 @@ class CartTotalPrice(APIView):
             discounted_price = math.ceil(discounted_price * 100) / 100
             if delivery_charge:
                 delivery_charge = math.ceil(delivery_charge * 100) / 100
-            rounded_total_price = math.ceil(total_price)
+
+            rounded_total_price = total_price
 
 
             wallet_value = 0
             current_wallet = 0
+            gst_amount = 0
+            cgst = 0
+            sgst = 0
+            
+            if gst_rate:
+                gst_amount = round((total_price * gst_rate) / (100 + gst_rate), 2)
+                cgst = round(gst_amount / 2, 2)
+                sgst = round(gst_amount - cgst, 2)
+                total_price += gst_amount
+                rounded_total_price = total_price
 
             if used_wallet:
 
@@ -510,11 +524,19 @@ class CartTotalPrice(APIView):
                 "discounted_price": discounted_price,
                 "delivery_charge": delivery_charge if delivery_charge else 0,
                 "wallet_value": wallet_value or 0,
-                "current_wallet": current_wallet
+                "current_wallet": current_wallet,
+
+                # GST fields
+                "gst_rate": gst_rate,
+                "cgst_amount": cgst,
+                "sgst_amount": sgst,
+                "total_gst": gst_amount,
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
