@@ -476,10 +476,7 @@ class CartTotalPrice(APIView):
                     except CustomerCoupon.DoesNotExist:
                         pass
             except CartCoupon.DoesNotExist:
-                pass            
-
-            if delivery_charge:
-                total_price += delivery_charge
+                pass
 
             total_price = math.ceil(total_price * 100) / 100
             previous_price = math.ceil(previous_price * 100) / 100
@@ -500,8 +497,11 @@ class CartTotalPrice(APIView):
                 gst_amount = round((total_price * gst_rate) / (100 + gst_rate), 2)
                 cgst = round(gst_amount / 2, 2)
                 sgst = round(gst_amount - cgst, 2)
-                total_price += gst_amount
+                # total_price += gst_amount
                 rounded_total_price = total_price
+
+            if delivery_charge:
+                total_price += delivery_charge
 
             if used_wallet:
 
